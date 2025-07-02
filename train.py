@@ -41,22 +41,31 @@ def run_training(dataset_name='CIFAR10', batch_size=64, epochs=5):
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001)
 
-    mlflow.set_tracking_uri("http://localhost:5000")
+    mlflow.set_tracking_uri("http://localhost:5000")  # Eğer uzaktan erişiyorsan değiştir
     mlflow.set_experiment("CNN_Voila_Training")
 
     with mlflow.start_run():
-        # Hiperparametreleri logla
         mlflow.log_param("dataset", dataset_name)
         mlflow.log_param("batch_size", batch_size)
         mlflow.log_param("epochs", epochs)
 
-        # Model açıklamasını ve örnek input-output signature'ı hazırla
-        model_description = str(model)
-        example_input = torch.rand(1, 3, 32, 32)  # CIFAR10 boyutları
-        example_output = model(example_input.to(device)).cpu().detach()
+        # Giriş örneği ve model çıktısı
+        example_input = torch.rand(1, 3, 32, 32).to(device)
+        example_output = model(example_input).cpu().detach()
+
+        # İmza (signature) çıkarımı
         signature = infer_signature(example_input.cpu().numpy(), example_output.numpy())
 
-        # Eğitim döngüsü
+        # Modeli MLflow'a kaydetme
+        mlflow.pytorch.log_model(
+            pytorch_model=model,
+            artifact_path="model",
+            input_example=example_input.cpu(),
+            signature=signature,
+            registered_model_name="CNN_Model"
+        )
+
+        # Eğitim süreci
         for epoch in range(epochs):
             running_loss = 0.0
             for inputs, labels in trainloader:
@@ -72,7 +81,7 @@ def run_training(dataset_name='CIFAR10', batch_size=64, epochs=5):
 
             print(f"Epoch {epoch+1}/{epochs} - Loss: {running_loss/len(trainloader):.4f}")
 
-        # Test doğruluğu
+        # Test
         correct = 0
         total = 0
         with torch.no_grad():
@@ -86,16 +95,5 @@ def run_training(dataset_name='CIFAR10', batch_size=64, epochs=5):
         acc = 100 * correct / total
         print(f"Accuracy: {acc:.2f}%")
         mlflow.log_metric("accuracy", acc)
-
-        # Modeli versiyonla ve signature ile birlikte kaydet
-        mlflow.set_tag("model_description", model_description)
-
-        mlflow.pytorch.log_model(
-            pytorch_model=model,
-            input_example=example_input.cpu(),
-            signature=signature,
-            registered_model_name="CNN_Model",
-            name="CNN_Model"
-        )
 
         print("Model ve sonuçlar MLflow'a kaydedildi.")
